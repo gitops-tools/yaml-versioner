@@ -22,8 +22,11 @@ func main() {
 
 func newIncrementCommand() *cobra.Command {
 	var (
-		key   string
-		patch bool
+		key        string
+		patch      bool
+		minor      bool
+		major      bool
+		preRelease string
 	)
 
 	cmd := &cobra.Command{
@@ -35,9 +38,11 @@ func newIncrementCommand() *cobra.Command {
 				return fmt.Errorf("getting filename to change: %s", err)
 			}
 
-			// TODO: Error if none of patch, minor etc.
 			return versioner.IncrementVersion(filename, key, versioner.VersionOptions{
-				Patch: patch,
+				Patch:      patch,
+				Minor:      minor,
+				Major:      major,
+				PreRelease: preRelease,
 			})
 		},
 	}
@@ -45,6 +50,10 @@ func newIncrementCommand() *cobra.Command {
 	cmd.Flags().StringVar(&key, "key", "", "key to modify e.g. version or capi.version")
 	cmd.MarkFlagRequired("key")
 	cmd.Flags().BoolVar(&patch, "patch", false, "increment the patch version within the semver e.g. 1.0.x")
+	cmd.Flags().BoolVar(&minor, "minor", false, "increment the minor version within the semver e.g. 1.x.0")
+	cmd.Flags().BoolVar(&major, "major", false, "increment the major version within the semver e.g. x.0.0")
+	cmd.Flags().StringVar(&preRelease, "pre-release", "", "set pre-release metadata e.g. alpha.1, beta.2")
+	cmd.MarkFlagsMutuallyExclusive("patch", "minor", "major")
 
 	return cmd
 }

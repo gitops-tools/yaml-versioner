@@ -17,6 +17,9 @@ type VersionOptions struct {
 	// Update the Minor version i.e. 0.x.0
 	Minor bool
 
+	// Update the Major version i.e. x.0.0
+	Major bool
+
 	// Added to the Patch version
 	PreRelease string
 }
@@ -33,6 +36,25 @@ func IncrementVersion(filename, key string, options VersionOptions) error {
 		return fmt.Errorf("parsing string %q as SemVer: %s", s, err)
 	}
 
+	// Validate that only one version component is being incremented
+	setCount := 0
+	if options.Patch {
+		setCount++
+	}
+	if options.Minor {
+		setCount++
+	}
+	if options.Major {
+		setCount++
+	}
+
+	if setCount == 0 {
+		return fmt.Errorf("at least one of --major, --minor, or --patch must be specified")
+	}
+	if setCount > 1 {
+		return fmt.Errorf("only one of --major, --minor, or --patch can be specified")
+	}
+
 	if options.Patch {
 		preRelease := v.Prerelease()
 		if options.PreRelease != "" {
@@ -41,10 +63,20 @@ func IncrementVersion(filename, key string, options VersionOptions) error {
 		v = semver.New(v.Major(), v.Minor(), v.Patch()+1, preRelease, v.Metadata())
 	}
 
-	// TODO: Error when Minor and Patch are set.
-
 	if options.Minor {
-		v = semver.New(v.Major(), v.Minor()+1, 0, v.Prerelease(), v.Metadata())
+		preRelease := v.Prerelease()
+		if options.PreRelease != "" {
+			preRelease = options.PreRelease
+		}
+		v = semver.New(v.Major(), v.Minor()+1, 0, preRelease, v.Metadata())
+	}
+
+	if options.Major {
+		preRelease := v.Prerelease()
+		if options.PreRelease != "" {
+			preRelease = options.PreRelease
+		}
+		v = semver.New(v.Major()+1, 0, 0, preRelease, v.Metadata())
 	}
 
 	return setNewVersion(filename, key, v)
@@ -58,12 +90,8 @@ func readCurrentVersion(filename, key string) (string, error) {
 
 	keyElements := keyToSlice(key)
 	value, err := rn.Pipe(kyaml.Lookup(keyElements...))
-	if err != nil {
-		return "", fmt.Errorf("failed to find key %q", key)
-	}
-
-	if value == nil {
-		return "", fmt.Errorf("failed to find key %q", key)
+	if err != nil || value == nil {
+		return "", fmt.Errorf("failed to find key %q in %s", key, filename)
 	}
 
 	s, err := value.String()
@@ -104,9 +132,29 @@ func setNewVersion(filename, key string, newVersion *semver.Version) error {
 		return fmt.Errorf("converting updated document to string: %s", err)
 	}
 
-	// TODO Truncate and reset and overwrite to preserve permissions
-	if err := os.WriteFile(filename, []byte(updated), 0644); err != nil {
+	// Preserve original file permissions
+	fileInfo, err := os.Stat(filename)
+	if err != nil {
+		return fmt.Errorf("reading file info for %s: %w", filename, err)
+	}
+	originalMode := fileInfo.Mode()
+
+	// Temporarily make the file writable if it's read-only
+	if originalMode&0200 == 0 {
+		if err := os.Chmod(filename, originalMode|0200); err != nil {
+			return fmt.Errorf("temporarily setting write permission on %s: %w", filename, err)
+		}
+	}
+
+	if err := os.WriteFile(filename, []byte(updated), originalMode); err != nil {
 		return fmt.Errorf("writing updated file to %s: %w", filename, err)
+	}
+
+	// Restore original permissions if we modified them
+	if originalMode&0200 == 0 {
+		if err := os.Chmod(filename, originalMode); err != nil {
+			return fmt.Errorf("restoring original permissions on %s: %w", filename, err)
+		}
 	}
 
 	return nil
