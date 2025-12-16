@@ -125,7 +125,7 @@ func TestIncrementVersionErrors(t *testing.T) {
 			name:    "non-semver key",
 			fname:   "testdata/Chart.yaml",
 			key:     "description",
-			wantErr: `parsing string "A Helm chart for Kubernetes" as SemVer: Invalid Semantic Version`,
+			wantErr: `parsing string "A Helm chart for Kubernetes" as SemVer: invalid semantic version`,
 		},
 	}
 
